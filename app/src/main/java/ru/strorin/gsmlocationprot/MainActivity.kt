@@ -1,6 +1,7 @@
 package ru.strorin.gsmlocationprot
 
 import android.Manifest
+import android.annotation.TargetApi
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -8,10 +9,10 @@ import android.telephony.CellIdentityGsm
 import android.telephony.CellIdentityLte
 import android.telephony.CellIdentityWcdma
 import android.telephony.TelephonyManager
+import android.telephony.gsm.GsmCellLocation
 import android.util.Log
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 
@@ -20,22 +21,28 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             queryLocation()
+        } else {
+            queryLocationOld()
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.R)
+    @TargetApi(Build.VERSION_CODES.M)
     private fun requestPermission() {
         val locationPermissionRequest = registerForActivityResult(
-            ActivityResultContracts.RequestMultiplePermissions()
+                ActivityResultContracts.RequestMultiplePermissions()
         ) { permissions ->
             when {
-                permissions.getOrDefault(Manifest.permission.ACCESS_FINE_LOCATION, false) -> {
+                permissions.getOrDefaultUtil(Manifest.permission.ACCESS_FINE_LOCATION, false) -> {
                     // Precise location access granted.
-                    queryLocation()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        queryLocation()
+                    } else {
+                        queryLocationOld()
+                    }
                 }
-                permissions.getOrDefault(Manifest.permission.ACCESS_COARSE_LOCATION, false) -> {
+                permissions.getOrDefaultUtil(Manifest.permission.ACCESS_COARSE_LOCATION, false) -> {
                     // Only approximate location access granted.
                 } else -> {
                 // No location access granted.
@@ -45,40 +52,71 @@ class MainActivity : AppCompatActivity() {
 
         when {
             ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_FINE_LOCATION
+                    this,
+                    Manifest.permission.ACCESS_FINE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
                     && ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.READ_PHONE_STATE
-            ) == PackageManager.PERMISSION_GRANTED-> queryLocation()
+                    this,
+                    Manifest.permission.READ_PHONE_STATE
+            ) == PackageManager.PERMISSION_GRANTED-> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                queryLocation()
+            } else {
+                queryLocationOld()
+            }
 
             shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) -> {
             //
             }
             else -> locationPermissionRequest.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                    Manifest.permission.READ_PHONE_STATE
-                )
+                    arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION,
+                            Manifest.permission.READ_PHONE_STATE
+                    )
             )
         }
 
     }
 
-    @RequiresApi(Build.VERSION_CODES.R)
+    private fun queryLocationOld() {
+        val telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
+
+        if (ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+                && ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.READ_PHONE_STATE
+                ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            val cellLocation = telephonyManager.cellLocation as? GsmCellLocation ?: return
+
+            val cellid = cellLocation.cid
+            val celllac = cellLocation.lac
+            val networkOperator = telephonyManager.networkOperator
+            val simCountryIso = telephonyManager.simCountryIso
+            val networkCountryIso = telephonyManager.networkCountryIso
+
+            Log.d("TESTTEST", cellLocation.toString())
+            setText(celllac, cellid, simCountryIso, networkCountryIso, networkOperator)
+        } else {
+            requestPermission()
+        }
+    }
+
+    @TargetApi(Build.VERSION_CODES.R)
     private fun queryLocation() {
         val telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
 
         if (ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
+                        this,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
             && ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.READ_PHONE_STATE
-            ) == PackageManager.PERMISSION_GRANTED
+                        this,
+                        Manifest.permission.READ_PHONE_STATE
+                ) == PackageManager.PERMISSION_GRANTED
         ) {
             val cellLocation = telephonyManager.allCellInfo
             Log.d("TESTTEST", "len = ${cellLocation.size}")
@@ -145,4 +183,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+}
+
+private fun <K, V> Map<K,V>.getOrDefaultUtil(key: K, defValue: V): V {
+    if (this.containsKey(key)) {
+        this[key]?.let {
+            return it
+        }
+    }
+    return defValue
 }
